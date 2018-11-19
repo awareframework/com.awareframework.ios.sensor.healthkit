@@ -1,0 +1,11 @@
+use_frameworks!
+
+target 'com.awareframework.ios.sensor.healthkit_Example' do
+  pod 'com.awareframework.ios.sensor.healthkit', :path => '../'
+
+  target 'com.awareframework.ios.sensor.healthkit_Tests' do
+    inherit! :search_paths
+
+    
+  end
+end

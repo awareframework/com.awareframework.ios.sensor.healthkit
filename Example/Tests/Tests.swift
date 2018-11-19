@@ -1,5 +1,5 @@
 import XCTest
-import com.awareframework.ios.sensor.healthkit
+import com_awareframework_ios_sensor_healthkit
 
 class Tests: XCTestCase {
     

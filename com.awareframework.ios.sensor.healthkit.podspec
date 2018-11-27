@@ -9,7 +9,7 @@
 Pod::Spec.new do |s|
     s.name             = 'com.awareframework.ios.sensor.healthkit'
     s.version          = '0.1.0'
-    s.summary          = 'A short description of com.aware.ios.sensor.healthkit.'
+    s.summary          = 'A HealthKit Module for AWARE Framework'
     
     # This description is used to generate tags and improve search results.
     #   * Think: What does it do? Why did you write it? What is the focus?
@@ -42,6 +42,6 @@ Pod::Spec.new do |s|
     s.frameworks = 'HealthKit' # 'UIKit', 'MapKit'
     # s.dependency 'AFNetworking', '~> 2.3'
     
-    s.dependency 'com.awareframework.ios.sensor.core'
+    s.dependency 'com.awareframework.ios.sensor.core', '~> 0.3.1'
     
 end

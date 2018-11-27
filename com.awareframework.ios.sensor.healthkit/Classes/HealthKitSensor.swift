@@ -35,11 +35,11 @@ public class HealthKitSensor: AwareSensor {
     
     public class Config:SensorConfig {
         public var fetchLimit                = 100
-        public var fetchInterval:Double      = 15 // min
-        public var isHeartRateFetch:Bool     = false
-        public var isSleepAnalysisFetch:Bool = false
-        public var isActivityFetch:Bool      = false
-        public var isStandHourFetch:Bool     = false
+        public var interval:Int              = 15 // min
+        public var statusHeartRate:Bool      = true
+        public var statusSleepAnalysis:Bool  = true
+        public var statusActivity:Bool       = true
+        public var statusStandHour:Bool      = true
         
         public var sensorObserver:HealthKitObserver?
         public override init() {
@@ -47,8 +47,30 @@ public class HealthKitSensor: AwareSensor {
             dbPath = "aware_healthkit"
         }
         
-        public convenience init(_ json:JSON){
-            self.init()
+        public override func set(config: Dictionary<String, Any>) {
+            super.set(config: config)
+            if let fetchLimit = config["fetchLimit"] as? Int {
+                self.fetchLimit = fetchLimit
+            }
+            if let interval = config["interval"] as? Int {
+                self.interval = interval
+            }
+            if config["statusHeartRate"] != nil {
+                self.statusHeartRate = config["statusHeartRate"] as! Bool
+                // print(config["statusHeartRate"])
+            }
+            if config["statusSleepAnalysis"] != nil {
+                self.statusSleepAnalysis = config["statusSleepAnalysis"] as! Bool
+                // print(config["statusSleepAnalysis"])
+            }
+            if config["statusStandHour"] != nil {
+                self.statusStandHour = config["statusStandHour"] as! Bool
+                // print( config["statusStandHour"] )
+            }
+            if config["statusActivity"] != nil {
+                self.statusActivity = config["statusActivity"] as! Bool
+                // print( config["statusActivity"] )
+            }
         }
         
         public func apply(closure:(_ config: HealthKitSensor.Config) -> Void) -> Self {
@@ -73,7 +95,7 @@ public class HealthKitSensor: AwareSensor {
         self.requestAuthorization()
         
         if hrTimer == nil {
-            hrTimer = Timer.scheduledTimer(withTimeInterval: self.CONFIG.fetchInterval * 60.0, repeats: true, block: { timer in
+            hrTimer = Timer.scheduledTimer(withTimeInterval: Double(self.CONFIG.interval) * 60.0, repeats: true, block: { timer in
                 if !self.isInRecoveryLoopHR {
                     self.fetchHRData(self.lastHRSyncDate)
                 }
@@ -82,7 +104,7 @@ public class HealthKitSensor: AwareSensor {
         }
         
         if activityTimer == nil {
-            activityTimer = Timer.scheduledTimer(withTimeInterval: self.CONFIG.fetchInterval * 60.0, repeats: true, block: { timer in
+            activityTimer = Timer.scheduledTimer(withTimeInterval: Double(self.CONFIG.interval) * 60.0, repeats: true, block: { timer in
                 if !self.isInRecoveryLoopActivity {
                     // self.fetchHRData(self.lastHRSyncDate)
                     self.fetchActivityData()
@@ -246,25 +268,25 @@ extension HealthKitSensor {
         
         var dataTypes = Set<HKSampleType>()
         
-        if self.CONFIG.isSleepAnalysisFetch {
+        if self.CONFIG.statusSleepAnalysis {
             for type in self.getSleepAnalysisHKType(){
                 dataTypes.insert(type)
             }
         }
         
-        if self.CONFIG.isHeartRateFetch {
+        if self.CONFIG.statusHeartRate {
             for type in self.getHeartRateHKType() {
                 dataTypes.insert(type)
             }
         }
         
-        if self.CONFIG.isStandHourFetch {
+        if self.CONFIG.statusStandHour {
             for type in self.getAppleStandHourHKType() {
                 dataTypes.insert(type)
             }
         }
         
-        if self.CONFIG.isActivityFetch {
+        if self.CONFIG.statusActivity {
             for type in self.getActivityHKType() {
                 dataTypes.insert(type)
             }

@@ -7,12 +7,16 @@
 //
 
 import UIKit
+import com_awareframework_ios_sensor_healthkit
 
 class ViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view, typically from a nib.
+        
+        var healthKit = HealthKitSensor.init()
+        healthKit.CONFIG.set(config: ["hoge":123])
     }
 
     override func didReceiveMemoryWarning() {

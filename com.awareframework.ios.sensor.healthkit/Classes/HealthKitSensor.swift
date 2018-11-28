@@ -128,7 +128,7 @@ public class HealthKitSensor: AwareSensor {
     
     public override func sync(force: Bool = false) {
         if let engine = self.dbEngine {
-            engine.startSync(HealthKitQuantityData.TABLE_NAME, DbSyncConfig().apply{config in
+            engine.startSync(HealthKitHeartRateData.TABLE_NAME, HealthKitHeartRateData.self, DbSyncConfig().apply{config in
                 config.debug = true
             })
         }

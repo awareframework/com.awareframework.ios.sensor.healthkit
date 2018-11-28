@@ -1,4 +1,4 @@
-# com.awareframework.ios.sensor.healthkit
+# AWARE: HealthKit 
 
 [![CI Status](https://img.shields.io/travis/tetujin/com.awareframework.ios.sensor.healthkit.svg?style=flat)](https://travis-ci.org/tetujin/com.awareframework.ios.sensor.healthkit)
 [![Version](https://img.shields.io/cocoapods/v/com.awareframework.ios.sensor.healthkit.svg?style=flat)](https://cocoapods.org/pods/com.awareframework.ios.sensor.healthkit)

@@ -9,7 +9,7 @@ import UIKit
 import com_awareframework_ios_sensor_core
 
 public class HealthKitQuantityData: AwareObject {
-    public static let TABLE_NAME = "healthKitQuantityTable"
+    public static let TABLE_NAME = "healthKitQuantityData"
     
     @objc dynamic public var quantity:String = ""  // e.g., 60
     @objc dynamic public var device:String   = "" // JSON format

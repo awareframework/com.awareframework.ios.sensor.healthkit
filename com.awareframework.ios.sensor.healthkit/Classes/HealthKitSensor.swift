@@ -176,6 +176,7 @@ extension HealthKitSensor {
                     hr.unit      = unit.unitString
                     hr.startDate = Int64(sample.startDate.timeIntervalSince1970 * 1000)
                     hr.endDate   = Int64(sample.endDate.timeIntervalSince1970 * 1000)
+                    hr.label     = self.CONFIG.label
                     if let meta = sample.metadata {
                         let json = JSON.init(meta)
                         if let rawString = json.rawString() {
@@ -191,7 +192,7 @@ extension HealthKitSensor {
                     }
                     
                     if let engine = self.dbEngine {
-                        engine.save(data, HealthKitQuantityData.TABLE_NAME)
+                        engine.save(data)
                     }
                     
                     if let observer = self.CONFIG.sensorObserver {

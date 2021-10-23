@@ -9,7 +9,7 @@ import UIKit
 import com_awareframework_ios_sensor_core
 
 public class HealthKitHeartRateData: AwareObject {
-    public static let TABLE_NAME = "healthKitHeartRateTable"
+    public static let TABLE_NAME = "healthKitHeartRateData"
     
     @objc dynamic public var heartrate:Double = 0  // e.g., 60
     @objc dynamic public var unit:String      = "" // e.g., count/min

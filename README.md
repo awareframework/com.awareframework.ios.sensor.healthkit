@@ -1,17 +1,34 @@
 # AWARE: HealthKit 
 
-[![CI Status](https://img.shields.io/travis/tetujin/com.awareframework.ios.sensor.healthkit.svg?style=flat)](https://travis-ci.org/tetujin/com.awareframework.ios.sensor.healthkit)
-[![Version](https://img.shields.io/cocoapods/v/com.awareframework.ios.sensor.healthkit.svg?style=flat)](https://cocoapods.org/pods/com.awareframework.ios.sensor.healthkit)
-[![License](https://img.shields.io/cocoapods/l/com.awareframework.ios.sensor.healthkit.svg?style=flat)](https://cocoapods.org/pods/com.awareframework.ios.sensor.healthkit)
-[![Platform](https://img.shields.io/cocoapods/p/com.awareframework.ios.sensor.healthkit.svg?style=flat)](https://cocoapods.org/pods/com.awareframework.ios.sensor.healthkit)
+[![Swift Package Manager compatible](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)](https://github.com/apple/swift-package-manager)
 
 ## Example
 
 To run the example project, clone the repo, and run `pod install` from the Example directory first.
 
 ## Requirements
+iOS 13 or later
+
 
 ## Installation
+You can integrate this framework into your project via Swift Package Manager (SwiftPM) or CocoaPods.
+
+### SwiftPM
+1. Open Package Manager Windows
+    * Open `Xcode` -> Select `Menu Bar` -> `File` -> `App Package Dependencies...` 
+
+2. Find the package using the manager
+    * Select `Search Package URL` and type `git@github.com:awareframework/com.awareframework.ios.sensor.healthkit.git`
+
+3. Import the package into your target.
+
+4. com_aware_ios_sensor_healthkit  library into your source code.
+```swift
+import com_awareframework_ios_sensor_healthkit
+```
+5. Turn on HealthKit capbility on Xcode
+
+### CocoaPods
 
 com.aware.ios.sensor.healthkit is available through [CocoaPods](https://cocoapods.org). 
 
@@ -53,7 +70,7 @@ class Observer:HealthKitObserver {
 
 ## Author
 
-Yuuki Nishiyama, yuukin@iis.u-tokyo.ac.jp
+Yuuki Nishiyama (The University of Tokyo), nishiyama@csis.u-tokyo.ac.jp
 
 ## License
 

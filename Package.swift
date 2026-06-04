@@ -11,19 +11,32 @@ let package = Package(
             targets: [
                 "com.awareframework.ios.sensor.healthkit"
             ]
-        ),
+        )
     ],
     dependencies: [
-        .package(url: "git@github.com:awareframework/com.awareframework.ios.sensor.core.git", from: "0.7.7")
+        .package(url: "https://github.com/awareframework/com.awareframework.ios.core.git", from: "1.1.0"),
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.3.0"),
+        .package(url: "https://github.com/SwiftyJSON/SwiftyJSON.git", from: "5.0.2"),
     ],
     targets: [
         .target(
             name: "com.awareframework.ios.sensor.healthkit",
             dependencies: [
-                .product(name: "com.awareframework.ios.sensor.core", package: "com.awareframework.ios.sensor.core", condition: .when(platforms: [.iOS]))
+                .product(
+                    name: "com.awareframework.ios.core", package: "com.awareframework.ios.core",
+                    condition: .when(platforms: [.iOS])),
+                .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "SwiftyJSON", package: "SwiftyJSON"),
             ],
-            path: "com.awareframework.ios.sensor.healthkit/Classes"
-        )
+            path: "Sources/com.awareframework.ios.sensor.healthkit"
+        ),
+        .testTarget(
+            name: "com.awareframework.ios.sensor.healthkitTests",
+            dependencies: [
+                .target(name: "com.awareframework.ios.sensor.healthkit")
+            ],
+            path: "Tests/com.awareframework.ios.sensor.healthkitTests"
+        ),
     ],
     swiftLanguageModes: [.v5]
 )

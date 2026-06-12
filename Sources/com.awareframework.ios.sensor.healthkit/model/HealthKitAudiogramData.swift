@@ -7,8 +7,17 @@ import Foundation
 import GRDB
 import com_awareframework_ios_core
 
+private func parseStoredJson(_ jsonString: String) -> Any {
+    guard !jsonString.isEmpty,
+          let data = jsonString.data(using: .utf8),
+          let parsed = try? JSONSerialization.jsonObject(with: data) else {
+        return jsonString
+    }
+    return parsed
+}
+
 public struct HealthKitAudiogramData: BaseDbModelSQLite {
-    public static let databaseTableName = "healthKitAudiogramData"
+    public static let databaseTableName = "ios_healthkit_audiogram"
     public static let TABLE_NAME = databaseTableName
 
     public var timezone: Int = AwareUtils.getTimeZone()
@@ -51,11 +60,11 @@ public struct HealthKitAudiogramData: BaseDbModelSQLite {
             "timestamp": self.timestamp,
             "deviceId": self.deviceId,
             "label": self.label,
-            "sensitivityPoints": self.sensitivityPoints,
-            "device": self.device,
+            "sensitivityPoints": parseStoredJson(self.sensitivityPoints),
+            "device": parseStoredJson(self.device),
             "startDate": self.startDate,
             "endDate": self.endDate,
-            "metadata": self.metadata,
+            "metadata": parseStoredJson(self.metadata),
             "type": self.type,
         ]
     }

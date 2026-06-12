@@ -8,7 +8,7 @@ import GRDB
 import com_awareframework_ios_core
 
 public struct HealthKitActivitySummaryData: BaseDbModelSQLite {
-    public static let databaseTableName = "healthKitActivitySummaryData"
+    public static let databaseTableName = "ios_healthkit_activity_summary"
     public static let TABLE_NAME = databaseTableName
 
     public var timezone: Int = AwareUtils.getTimeZone()

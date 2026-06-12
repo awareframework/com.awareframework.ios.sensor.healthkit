@@ -100,7 +100,7 @@ public class HealthKitSensor: AwareSensor {
         public var sensorObserver: HealthKitObserver?
         public override init() {
             super.init()
-            dbPath = "aware_healthkit"
+            dbPath = "aware_health_kit"
         }
 
         public override func set(config: [String: Any]) {

@@ -17,7 +17,7 @@ private func parseStoredJson(_ jsonString: String) -> Any {
 }
 
 public struct HealthKitHeartRateData: BaseDbModelSQLite {
-    public static let databaseTableName = "ios_healthkit_heart_rate"
+    public static let databaseTableName = "ios_healthkit_heartrate"
     public static let TABLE_NAME = databaseTableName
 
     public var timezone: Int = AwareUtils.getTimeZone()

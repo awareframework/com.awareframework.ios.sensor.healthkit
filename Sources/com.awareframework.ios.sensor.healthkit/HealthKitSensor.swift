@@ -77,7 +77,7 @@ public class HealthKitSensor: AwareSensor {
 
     public class Config: SensorConfig {
         public var fetchLimit = 100
-        public var interval: Int = 15  // min
+        public var sampleIntervalSeconds: Int = 900
         public var statusHeartRate: Bool = true
         public var statusSleepAnalysis: Bool = true
         public var statusActivity: Bool = true
@@ -108,8 +108,8 @@ public class HealthKitSensor: AwareSensor {
             if let fetchLimit = config["fetchLimit"] as? Int {
                 self.fetchLimit = fetchLimit
             }
-            if let interval = config["interval"] as? Int {
-                self.interval = interval
+            if let sampleIntervalSeconds = config["sampleIntervalSeconds"] as? Int {
+                self.sampleIntervalSeconds = sampleIntervalSeconds
             }
             if let dataStartDate = config["dataStartDate"] as? Date {
                 self.dataStartDate = dataStartDate
@@ -207,7 +207,7 @@ public class HealthKitSensor: AwareSensor {
 
         if hrTimer == nil {
             hrTimer = Timer.scheduledTimer(
-                withTimeInterval: Double(self.CONFIG.interval) * 60.0, repeats: true,
+                withTimeInterval: Double(self.CONFIG.sampleIntervalSeconds), repeats: true,
                 block: { timer in
                     if !self.isInRecoveryLoopHR {
                         self.fetchHRData(self.lastHRSyncDate)
@@ -217,7 +217,7 @@ public class HealthKitSensor: AwareSensor {
 
         if activityTimer == nil {
             activityTimer = Timer.scheduledTimer(
-                withTimeInterval: Double(self.CONFIG.interval) * 60.0, repeats: true,
+                withTimeInterval: Double(self.CONFIG.sampleIntervalSeconds), repeats: true,
                 block: { _ in
                     if !self.isInRecoveryLoopActivity {
                         self.fetchActivityData()
@@ -227,7 +227,7 @@ public class HealthKitSensor: AwareSensor {
 
         if sleepTimer == nil {
             sleepTimer = Timer.scheduledTimer(
-                withTimeInterval: Double(self.CONFIG.interval) * 60.0, repeats: true,
+                withTimeInterval: Double(self.CONFIG.sampleIntervalSeconds), repeats: true,
                 block: { _ in
                     if !self.isInRecoveryLoopSleep {
                         self.fetchCategoryData()
@@ -237,7 +237,7 @@ public class HealthKitSensor: AwareSensor {
 
         if standHourTimer == nil {
             standHourTimer = Timer.scheduledTimer(
-                withTimeInterval: Double(self.CONFIG.interval) * 60.0, repeats: true,
+                withTimeInterval: Double(self.CONFIG.sampleIntervalSeconds), repeats: true,
                 block: { _ in
                     if !self.isInRecoveryLoopStandHour {
                         self.fetchStandHourData()
@@ -247,7 +247,7 @@ public class HealthKitSensor: AwareSensor {
 
         if electrocardiogramTimer == nil {
             electrocardiogramTimer = Timer.scheduledTimer(
-                withTimeInterval: Double(self.CONFIG.interval) * 60.0, repeats: true,
+                withTimeInterval: Double(self.CONFIG.sampleIntervalSeconds), repeats: true,
                 block: { _ in
                     self.fetchElectrocardiogramData(self.lastElectrocardiogramSyncDate)
                 })
@@ -255,7 +255,7 @@ public class HealthKitSensor: AwareSensor {
 
         if supplementalTimer == nil {
             supplementalTimer = Timer.scheduledTimer(
-                withTimeInterval: Double(self.CONFIG.interval) * 60.0, repeats: true,
+                withTimeInterval: Double(self.CONFIG.sampleIntervalSeconds), repeats: true,
                 block: { _ in
                     self.fetchSupplementalHealthData()
                 })

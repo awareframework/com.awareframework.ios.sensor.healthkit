@@ -22,14 +22,14 @@ class Tests: XCTestCase {
 
     func testConfig() {
         let fetchLimit = 150
-        let interval: Int = 10  // min
+        let sampleIntervalSeconds: Int = 10
         let statusHeartRate: Bool = false
         let statusSleepAnalysis: Bool = false
         let statusActivity: Bool = false
         let statusStandHour: Bool = false
         let config: [String: Any] = [
             "fetchLimit": fetchLimit,
-            "interval": interval,
+            "sampleIntervalSeconds": sampleIntervalSeconds,
             "statusHeartRate": statusHeartRate,
             "statusSleepAnalysis": statusSleepAnalysis,
             "statusActivity": statusActivity,
@@ -39,7 +39,7 @@ class Tests: XCTestCase {
         // defualt
         var sensor = HealthKitSensor.init()
         XCTAssertEqual(sensor.CONFIG.fetchLimit, 100)
-        XCTAssertEqual(sensor.CONFIG.interval, 15)
+        XCTAssertEqual(sensor.CONFIG.sampleIntervalSeconds, 900)
         XCTAssertEqual(sensor.CONFIG.statusStandHour, true)
         XCTAssertEqual(sensor.CONFIG.statusSleepAnalysis, true)
         XCTAssertEqual(sensor.CONFIG.statusActivity, true)
@@ -49,14 +49,14 @@ class Tests: XCTestCase {
         sensor = HealthKitSensor.init(
             HealthKitSensor.Config().apply { config in
                 config.fetchLimit = fetchLimit
-                config.interval = interval
+                config.sampleIntervalSeconds = sampleIntervalSeconds
                 config.statusStandHour = statusStandHour
                 config.statusActivity = statusActivity
                 config.statusHeartRate = statusHeartRate
                 config.statusSleepAnalysis = statusSleepAnalysis
             })
         XCTAssertEqual(sensor.CONFIG.fetchLimit, fetchLimit)
-        XCTAssertEqual(sensor.CONFIG.interval, interval)
+        XCTAssertEqual(sensor.CONFIG.sampleIntervalSeconds, sampleIntervalSeconds)
         XCTAssertEqual(sensor.CONFIG.statusHeartRate, statusHeartRate)
         XCTAssertEqual(sensor.CONFIG.statusSleepAnalysis, statusSleepAnalysis)
         XCTAssertEqual(sensor.CONFIG.statusActivity, statusActivity)
@@ -66,7 +66,7 @@ class Tests: XCTestCase {
         sensor = HealthKitSensor()
         sensor.CONFIG.set(config: config)
         XCTAssertEqual(sensor.CONFIG.fetchLimit, fetchLimit)
-        XCTAssertEqual(sensor.CONFIG.interval, interval)
+        XCTAssertEqual(sensor.CONFIG.sampleIntervalSeconds, sampleIntervalSeconds)
         XCTAssertEqual(sensor.CONFIG.statusHeartRate, statusHeartRate)
         XCTAssertEqual(sensor.CONFIG.statusSleepAnalysis, statusSleepAnalysis)
         XCTAssertEqual(sensor.CONFIG.statusActivity, statusActivity)

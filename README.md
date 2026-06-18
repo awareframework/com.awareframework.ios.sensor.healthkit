@@ -1,5 +1,4 @@
-# AWARE: HealthKit 
-
+# AWARE: HealthKit
 [![Swift Package Manager compatible](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)](https://github.com/apple/swift-package-manager)
 
 ## Requirements
@@ -10,7 +9,7 @@ You can integrate this framework into your project via Swift Package Manager (Sw
 
 ### SwiftPM
 1. Open Package Manager Windows
-    * Open `Xcode` -> Select `Menu Bar` -> `File` -> `App Package Dependencies...` 
+    * Open `Xcode` -> Select `Menu Bar` -> `File` -> `App Package Dependencies...`
 
 2. Find the package using the manager
     * Select `Search Package URL` and type `git@github.com:awareframework/com.awareframework.ios.sensor.healthkit.git`
@@ -24,10 +23,11 @@ import com_awareframework_ios_sensor_healthkit
 5. Turn on HealthKit capbility on Xcode
 
 
-## Example usage
+## Example Usage
 ```swift
-let sensor = HealthKitSensor.init(HealthKitSensor.Config().apply{config in
+let sensor = HealthKitSensor.init(HealthKitSensor.Config().apply { config in
     config.debug = true
+    config.sampleIntervalSeconds = 900
     config.sensorObserver = Observer()
     config.statusHeartRate = true
     config.statusAllQuantityTypes = true
@@ -43,7 +43,7 @@ sensor.start()
 To collect only specific sensors, set one or more selection lists. When any selection list is non-empty, the package only requests and collects the selected sensors.
 
 ```swift
-let sensor = HealthKitSensor.init(HealthKitSensor.Config().apply{config in
+let sensor = HealthKitSensor.init(HealthKitSensor.Config().apply { config in
     config.debug = true
     config.sensorObserver = Observer()
 
@@ -211,4 +211,3 @@ Copyright (c) 2021 AWARE Mobile Context Instrumentation Middleware/Framework (ht
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-

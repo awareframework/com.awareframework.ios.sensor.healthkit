@@ -432,21 +432,7 @@ extension HealthKitSensor {
         from baseConfig: DbSyncConfig,
         completionHandler: DbSyncCompletionHandler?
     ) -> DbSyncConfig {
-        let syncConfig = DbSyncConfig()
-        syncConfig.removeAfterSync = baseConfig.removeAfterSync
-        syncConfig.batchSize = baseConfig.batchSize
-        syncConfig.markAsSynced = baseConfig.markAsSynced
-        syncConfig.skipSyncedData = baseConfig.skipSyncedData
-        syncConfig.keepLastData = baseConfig.keepLastData
-        syncConfig.deviceId = baseConfig.deviceId
-        syncConfig.debug = baseConfig.debug
-        syncConfig.debugLevel = baseConfig.debugLevel
-        syncConfig.progressHandler = baseConfig.progressHandler
-        syncConfig.dispatchQueue = baseConfig.dispatchQueue
-        syncConfig.backgroundSession = baseConfig.backgroundSession
-        syncConfig.compactDataFormat = baseConfig.compactDataFormat
-        syncConfig.serverType = baseConfig.serverType
-        syncConfig.test = baseConfig.test
+        let syncConfig = baseConfig.copy()
         syncConfig.completionHandler = completionHandler
         return syncConfig
     }

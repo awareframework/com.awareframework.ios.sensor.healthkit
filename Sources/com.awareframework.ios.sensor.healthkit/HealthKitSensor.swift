@@ -1427,6 +1427,13 @@ extension HealthKitSensor {
                 }
             }
 
+            // fetchActivityData() reads these with heart rate, so they must be requested too
+            if self.CONFIG.statusHeartRate {
+                for type in self.getAdvancedHeartRateHKType() {
+                    dataTypes.insert(type)
+                }
+            }
+
             if self.CONFIG.statusAllQuantityTypes {
                 for type in self.getGeneralQuantityHKType() {
                     dataTypes.insert(type)

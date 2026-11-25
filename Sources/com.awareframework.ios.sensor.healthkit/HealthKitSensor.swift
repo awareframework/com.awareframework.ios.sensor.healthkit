@@ -58,18 +58,13 @@ public class HealthKitSensor: AwareSensor {
     private var appDidBecomeActiveObserver: NSObjectProtocol?
     private var lastObservedScreenOnState: Bool = UIScreen.main.brightness > 0
 
+    private let historyImport = HealthKitHistoryImport()
+    private let callbackGenerationLock = NSLock()
+    private var callbackGeneration = UUID()
     private var hrTimer: Timer?
-    private var isInRecoveryLoopHR: Bool = false
-
     private var activityTimer: Timer?
-    private var isInRecoveryLoopActivity: Bool = false
-
     private var sleepTimer: Timer?
-    private var isInRecoveryLoopSleep: Bool = false
-
     private var standHourTimer: Timer?
-    private var isInRecoveryLoopStandHour: Bool = false
-
     private var electrocardiogramTimer: Timer?
     private var supplementalTimer: Timer?
 
@@ -208,10 +203,8 @@ public class HealthKitSensor: AwareSensor {
         if hrTimer == nil {
             hrTimer = Timer.scheduledTimer(
                 withTimeInterval: Double(self.CONFIG.sampleIntervalSeconds), repeats: true,
-                block: { timer in
-                    if !self.isInRecoveryLoopHR {
-                        self.fetchHRData(self.lastHRSyncDate)
-                    }
+                block: { _ in
+                    self.fetchHRData(self.lastHRSyncDate)
                 })
         }
 
@@ -219,9 +212,7 @@ public class HealthKitSensor: AwareSensor {
             activityTimer = Timer.scheduledTimer(
                 withTimeInterval: Double(self.CONFIG.sampleIntervalSeconds), repeats: true,
                 block: { _ in
-                    if !self.isInRecoveryLoopActivity {
-                        self.fetchActivityData()
-                    }
+                    self.fetchActivityData()
                 })
         }
 
@@ -229,9 +220,7 @@ public class HealthKitSensor: AwareSensor {
             sleepTimer = Timer.scheduledTimer(
                 withTimeInterval: Double(self.CONFIG.sampleIntervalSeconds), repeats: true,
                 block: { _ in
-                    if !self.isInRecoveryLoopSleep {
-                        self.fetchCategoryData()
-                    }
+                    self.fetchCategoryData()
                 })
         }
 
@@ -239,9 +228,7 @@ public class HealthKitSensor: AwareSensor {
             standHourTimer = Timer.scheduledTimer(
                 withTimeInterval: Double(self.CONFIG.sampleIntervalSeconds), repeats: true,
                 block: { _ in
-                    if !self.isInRecoveryLoopStandHour {
-                        self.fetchStandHourData()
-                    }
+                    self.fetchStandHourData()
                 })
         }
 
@@ -263,6 +250,8 @@ public class HealthKitSensor: AwareSensor {
     }
 
     public override func stop() {
+        invalidateCallbacks()
+        historyImport.cancel()
         if let t = hrTimer {
             t.invalidate()
             self.hrTimer = nil
@@ -396,22 +385,10 @@ extension HealthKitSensor {
     }
 
     private func fetchAllEnabledData() {
-        if !self.isInRecoveryLoopHR {
-            self.fetchHRData(self.lastHRSyncDate)
-        }
-
-        if !self.isInRecoveryLoopActivity {
-            self.fetchActivityData()
-        }
-
-        if !self.isInRecoveryLoopSleep {
-            self.fetchCategoryData()
-        }
-
-        if !self.isInRecoveryLoopStandHour {
-            self.fetchStandHourData()
-        }
-
+        self.fetchHRData(self.lastHRSyncDate)
+        self.fetchActivityData()
+        self.fetchCategoryData()
+        self.fetchStandHourData()
         self.fetchElectrocardiogramData(self.lastElectrocardiogramSyncDate)
         self.fetchSupplementalHealthData()
     }
@@ -554,404 +531,235 @@ extension HealthKitSensor {
     }
 }
 
-/// extension for HR data
 extension HealthKitSensor {
-    /// 心拍数を取得
-    public func fetchHRData(_ start: Date) {
-        guard self.shouldCollectHeartRate() else {
-            self.isInRecoveryLoopHR = false
-            return
-        }
-        guard
-            let quantityType = HKObjectType.quantityType(
-                forIdentifier: HKQuantityTypeIdentifier.heartRate)
-        else {
-            return
-        }
-        let unit = HKUnit.count().unitDivided(by: HKUnit.minute())
-        let datePredicate = HKQuery.predicateForSamples(
-            withStart: start, end: nil, options: .strictEndDate)
-        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [datePredicate])
+    private func currentCallbackGeneration() -> UUID {
+        callbackGenerationLock.lock()
+        defer { callbackGenerationLock.unlock() }
+        return callbackGeneration
+    }
 
-        let heartRateQuery = HKAnchoredObjectQuery(
-            type: quantityType, predicate: predicate, anchor: nil, limit: self.CONFIG.fetchLimit
-        ) { (query, sampleObjects, deletedObjects, newAnchor, error) -> Void in
-            if let error {
-                if self.CONFIG.debug {
-                    print(HealthKitSensor.ACTION_AWARE_HEALTHKIT, "heart rate fetch failed: \(error)")
-                }
-                self.isInRecoveryLoopHR = false
+    private func invalidateCallbacks() {
+        callbackGenerationLock.lock()
+        defer { callbackGenerationLock.unlock() }
+        callbackGeneration = UUID()
+    }
+
+    private func importSamples<Sample: HKSample, Record: BaseDbModelSQLite>(
+        type: HKSampleType, from start: Date,
+        transform: @escaping (HealthKitSensor, [Sample], @escaping ([Record]?) -> Void) -> Void,
+        updateDate: @escaping (HealthKitSensor, Date) -> Void,
+        notify: @escaping (HealthKitObserver, [Record]) -> Void
+    ) {
+        guard let store = healthStore else { return }
+        let database: DatabaseQueue?
+        if CONFIG.dbType == .none {
+            database = nil
+        } else {
+            guard let queue = (dbEngine as? SQLiteEngine)?.getSQLiteInstance() else { return }
+            database = queue
+        }
+
+        let stream = "\(Record.databaseTableName):\(type.identifier)"
+        let generation = currentCallbackGeneration()
+        let debug = CONFIG.debug
+        let buildRecords: ([Sample], @escaping ([Record]?) -> Void) -> Void = { [weak self] samples, completion in
+            guard let self else {
+                completion(nil)
                 return
             }
-            
-            if let samples = sampleObjects as? [HKQuantitySample] {
-                var data = [HealthKitHeartRateData]()
-                for sample in samples {
-                    var hr = HealthKitHeartRateData(
-                        timestamp: Int64(sample.endDate.timeIntervalSince1970 * 1000),
-                        label: self.CONFIG.label)
-                    // device info
-                    if let device = sample.device {
-                        let json = JSON.init(device.toDictionary())
-                        if let rawString = json.rawString() {
-                            hr.device = rawString
-                        }
-                    }
-                    hr.type = sample.quantityType.description
-                    hr.heartrate = sample.quantity.doubleValue(for: unit)
-                    hr.unit = unit.unitString
-                    hr.startDate = Int64(sample.startDate.timeIntervalSince1970 * 1000)
-                    hr.endDate = Int64(sample.endDate.timeIntervalSince1970 * 1000)
-                    hr.label = self.CONFIG.label
-                    if let meta = sample.metadata {
-                        let json = JSON.init(meta)
-                        if let rawString = json.rawString() {
-                            hr.metadata = rawString
-                        }
-                    }
-                    data.append(hr)
-                }
-
-                if samples.count > 0 {
-                    if let last = samples.last {
-                        self.lastHRSyncDate = last.endDate
-                    }
-
-                    self.saveModels(data)
-
-                    if let observer = self.CONFIG.sensorObserver {
-                        observer.onHeartRateDataChanged(data: data)
-                    }
-                }
-
-                if samples.count == self.CONFIG.fetchLimit {
-                    self.isInRecoveryLoopHR = true
-                    self.fetchHRData(self.lastHRSyncDate)
-                } else {
-                    self.isInRecoveryLoopHR = false
-                }
-            }
+            transform(self, samples, completion)
         }
-        self.healthStore?.execute(heartRateQuery)
+        historyImport.fetch(
+            store: store, database: database, stream: stream, type: type, from: start,
+            pageSize: CONFIG.fetchLimit,
+            transform: buildRecords,
+            didSave: { [weak self] (records: [Record], latestEnd: Date?) in
+                guard let self else { return }
+                if let latestEnd { updateDate(self, latestEnd) }
+                guard !records.isEmpty else { return }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.currentCallbackGeneration() == generation,
+                        let observer = self.CONFIG.sensorObserver
+                    else { return }
+                    notify(observer, records)
+                }
+            },
+            onError: { error in
+                if debug {
+                    print(HealthKitSensor.ACTION_AWARE_HEALTHKIT, "\(stream) import failed: \(error)")
+                }
+            })
+    }
+
+    /// 心拍数を取得
+    public func fetchHRData(_ start: Date) {
+        guard shouldCollectHeartRate(),
+            let type = HKObjectType.quantityType(forIdentifier: .heartRate)
+        else { return }
+
+        let unit = HKUnit.count().unitDivided(by: HKUnit.minute())
+        importSamples(type: type, from: start,
+            transform: { (sensor, samples: [HKQuantitySample], completion) in
+                completion(samples.map { sample in
+                    var record = HealthKitHeartRateData(
+                        timestamp: Int64(sample.endDate.timeIntervalSince1970 * 1000),
+                        label: sensor.CONFIG.label)
+                    record.type = sample.quantityType.description
+                    record.heartrate = sample.quantity.doubleValue(for: unit)
+                    record.unit = unit.unitString
+                    record.startDate = Int64(sample.startDate.timeIntervalSince1970 * 1000)
+                    record.endDate = Int64(sample.endDate.timeIntervalSince1970 * 1000)
+                    record.device = sensor.jsonString(from: sample.device?.toDictionary())
+                    record.metadata = sensor.jsonString(from: sample.metadata)
+                    return record
+                })
+            },
+            updateDate: { sensor, latestEnd in
+                if latestEnd > sensor.lastHRSyncDate {
+                    sensor.lastHRSyncDate = latestEnd
+                }
+            },
+            notify: { $0.onHeartRateDataChanged(data: $1) })
     }
 
     public func fetchQuantityData(types: [HKQuantityType]) {
-        for quantityType in types {
-            self.fetchQuantityData(
-                type: quantityType, start: self.lastQuantitySyncDate(for: quantityType.identifier))
+        for type in types {
+            fetchQuantityData(type: type, start: lastQuantitySyncDate(for: type.identifier))
         }
     }
 
     public func fetchQuantityData(type: HKQuantityType, start: Date) {
-        let datePredicate = HKQuery.predicateForSamples(
-            withStart: start, end: nil, options: .strictEndDate)
-        let sortDescriptors = [
-            NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
-        ]
-        let query = HKSampleQuery(
-            sampleType: type, predicate: datePredicate, limit: self.CONFIG.fetchLimit,
-            sortDescriptors: sortDescriptors
-        ) { [weak self] _, samples, error in
-            guard let self = self else {
-                return
-            }
-
-            if error != nil {
-                self.isInRecoveryLoopActivity = false
-                return
-            }
-
-            guard let quantitySamples = samples as? [HKQuantitySample],
-                quantitySamples.isEmpty == false
-            else {
-                self.isInRecoveryLoopActivity = false
-                return
-            }
-
-            let data = quantitySamples.map { sample -> HealthKitQuantityData in
-                var quantity = HealthKitQuantityData(
-                    timestamp: Int64(sample.endDate.timeIntervalSince1970 * 1000),
-                    label: self.CONFIG.label)
-                quantity.quantity = sample.quantity.description
-                quantity.unit = self.extractUnit(from: sample.quantity.description)
-                quantity.type = sample.quantityType.identifier
-                quantity.startDate = Int64(sample.startDate.timeIntervalSince1970 * 1000)
-                quantity.endDate = Int64(sample.endDate.timeIntervalSince1970 * 1000)
-                quantity.device = self.jsonString(from: sample.device?.toDictionary())
-                quantity.metadata = self.jsonString(from: sample.metadata)
-                return quantity
-            }
-
-            self.saveModels(data)
-            self.CONFIG.sensorObserver?.onQuantityDataChanged(data: data)
-
-            if let last = quantitySamples.last {
-                self.setLastQuantitySyncDate(last.endDate, for: type.identifier)
-            }
-
-            if quantitySamples.count == self.CONFIG.fetchLimit {
-                self.isInRecoveryLoopActivity = true
-                self.fetchQuantityData(
-                    type: type, start: self.lastQuantitySyncDate(for: type.identifier))
-            } else {
-                self.isInRecoveryLoopActivity = false
-            }
-        }
-
-        self.healthStore?.execute(query)
+        importSamples(type: type, from: start,
+            transform: { (sensor, samples: [HKQuantitySample], completion) in
+                completion(samples.map { sample in
+                    var record = HealthKitQuantityData(
+                        timestamp: Int64(sample.endDate.timeIntervalSince1970 * 1000),
+                        label: sensor.CONFIG.label)
+                    record.quantity = sample.quantity.description
+                    record.unit = sensor.extractUnit(from: sample.quantity.description)
+                    record.type = sample.quantityType.identifier
+                    record.startDate = Int64(sample.startDate.timeIntervalSince1970 * 1000)
+                    record.endDate = Int64(sample.endDate.timeIntervalSince1970 * 1000)
+                    record.device = sensor.jsonString(from: sample.device?.toDictionary())
+                    record.metadata = sensor.jsonString(from: sample.metadata)
+                    return record
+                })
+            },
+            updateDate: { sensor, latestEnd in
+                if latestEnd > sensor.lastQuantitySyncDate(for: type.identifier) {
+                    sensor.setLastQuantitySyncDate(latestEnd, for: type.identifier)
+                }
+            },
+            notify: { $0.onQuantityDataChanged(data: $1) })
     }
 
     public func fetchCategoryData(types: [HKCategoryType]) {
-        for categoryType in types {
-            self.fetchCategoryData(
-                type: categoryType, start: self.lastCategorySyncDate(for: categoryType.identifier))
+        for type in types {
+            fetchCategoryData(type: type, start: lastCategorySyncDate(for: type.identifier))
         }
     }
 
     public func fetchCategoryData(type: HKCategoryType, start: Date) {
-        let datePredicate = HKQuery.predicateForSamples(
-            withStart: start, end: nil, options: .strictEndDate)
-        let sortDescriptors = [
-            NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
-        ]
-        let query = HKSampleQuery(
-            sampleType: type, predicate: datePredicate, limit: self.CONFIG.fetchLimit,
-            sortDescriptors: sortDescriptors
-        ) { [weak self] _, samples, error in
-            guard let self = self else {
-                return
-            }
-
-            if error != nil {
-                self.isInRecoveryLoopSleep = false
-                return
-            }
-
-            guard let categorySamples = samples as? [HKCategorySample],
-                categorySamples.isEmpty == false
-            else {
-                self.isInRecoveryLoopSleep = false
-                self.isInRecoveryLoopStandHour = false
-                return
-            }
-
-            let data = categorySamples.map { sample -> HealthKitCategoryData in
-                var category = HealthKitCategoryData(
-                    timestamp: Int64(sample.endDate.timeIntervalSince1970 * 1000),
-                    label: self.CONFIG.label)
-                category.category = sample.value
-                category.type = sample.categoryType.identifier
-                category.startDate = Int64(sample.startDate.timeIntervalSince1970 * 1000)
-                category.endDate = Int64(sample.endDate.timeIntervalSince1970 * 1000)
-                category.device = self.jsonString(from: sample.device?.toDictionary())
-                category.metadata = self.jsonString(from: sample.metadata)
-                return category
-            }
-
-            self.saveModels(data)
-            self.CONFIG.sensorObserver?.onCategoryDataChanged(data: data)
-
-            if let last = categorySamples.last {
-                self.setLastCategorySyncDate(last.endDate, for: type.identifier)
-            }
-
-            let isStandHourType =
-                type.identifier == HKCategoryTypeIdentifier.appleStandHour.rawValue
-            if categorySamples.count == self.CONFIG.fetchLimit {
-                if isStandHourType {
-                    self.isInRecoveryLoopStandHour = true
-                } else {
-                    self.isInRecoveryLoopSleep = true
+        importSamples(type: type, from: start,
+            transform: { (sensor, samples: [HKCategorySample], completion) in
+                completion(samples.map { sample in
+                    var record = HealthKitCategoryData(
+                        timestamp: Int64(sample.endDate.timeIntervalSince1970 * 1000),
+                        label: sensor.CONFIG.label)
+                    record.category = sample.value
+                    record.type = sample.categoryType.identifier
+                    record.startDate = Int64(sample.startDate.timeIntervalSince1970 * 1000)
+                    record.endDate = Int64(sample.endDate.timeIntervalSince1970 * 1000)
+                    record.device = sensor.jsonString(from: sample.device?.toDictionary())
+                    record.metadata = sensor.jsonString(from: sample.metadata)
+                    return record
+                })
+            },
+            updateDate: { sensor, latestEnd in
+                if latestEnd > sensor.lastCategorySyncDate(for: type.identifier) {
+                    sensor.setLastCategorySyncDate(latestEnd, for: type.identifier)
                 }
-                self.fetchCategoryData(
-                    type: type, start: self.lastCategorySyncDate(for: type.identifier))
-            } else if isStandHourType {
-                self.isInRecoveryLoopStandHour = false
-            } else {
-                self.isInRecoveryLoopSleep = false
-            }
-        }
-
-        self.healthStore?.execute(query)
+            },
+            notify: { $0.onCategoryDataChanged(data: $1) })
     }
 
     public func fetchElectrocardiogramData(_ start: Date) {
-        guard self.CONFIG.statusElectrocardiogram else {
-            return
-        }
+        guard CONFIG.statusElectrocardiogram else { return }
 
         if #available(iOS 14.0, *) {
-            let type = HKElectrocardiogramType.electrocardiogramType()
-            let datePredicate = HKQuery.predicateForSamples(
-                withStart: start, end: nil, options: .strictEndDate)
-            let sortDescriptors = [
-                NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
-            ]
-            let query = HKSampleQuery(
-                sampleType: type, predicate: datePredicate, limit: self.CONFIG.fetchLimit,
-                sortDescriptors: sortDescriptors
-            ) { [weak self] _, samples, error in
-                guard let self = self else {
-                    return
-                }
-
-                if error != nil {
-                    return
-                }
-
-                guard let electrocardiograms = samples as? [HKElectrocardiogram],
-                    electrocardiograms.isEmpty == false
-                else {
-                    return
-                }
-
-                let group = DispatchGroup()
-                var savedData = [HealthKitElectrocardiogramData]()
-
-                for electrocardiogram in electrocardiograms {
-                    group.enter()
-                    self.loadElectrocardiogramSample(electrocardiogram) { data in
-                        if let data = data {
-                            savedData.append(data)
-                        }
-                        group.leave()
+            importSamples(type: HKElectrocardiogramType.electrocardiogramType(), from: start,
+                transform: { (sensor, samples: [HKElectrocardiogram], completion) in
+                    sensor.loadElectrocardiogramSamples(samples, completion: completion)
+                },
+                updateDate: { sensor, latestEnd in
+                    if latestEnd > sensor.lastElectrocardiogramSyncDate {
+                        sensor.lastElectrocardiogramSyncDate = latestEnd
                     }
-                }
-
-                group.notify(queue: .main) {
-                    if savedData.isEmpty == false {
-                        self.saveModels(savedData)
-                        self.CONFIG.sensorObserver?.onElectrocardiogramDataChanged(data: savedData)
-                    }
-
-                    if let last = electrocardiograms.last {
-                        self.lastElectrocardiogramSyncDate = last.endDate
-                    }
-
-                    if electrocardiograms.count == self.CONFIG.fetchLimit {
-                        self.fetchElectrocardiogramData(self.lastElectrocardiogramSyncDate)
-                    }
-                }
-            }
-
-            self.healthStore?.execute(query)
+                },
+                notify: { $0.onElectrocardiogramDataChanged(data: $1) })
         }
     }
 
     public func fetchWorkoutData(_ start: Date) {
-        guard self.shouldCollectWorkout() else {
-            return
-        }
+        guard shouldCollectWorkout() else { return }
 
-        let sampleType = HKObjectType.workoutType()
-        let predicate = HKQuery.predicateForSamples(
-            withStart: start, end: nil, options: .strictEndDate)
-        let sortDescriptors = [
-            NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
-        ]
-        let query = HKSampleQuery(
-            sampleType: sampleType, predicate: predicate, limit: self.CONFIG.fetchLimit,
-            sortDescriptors: sortDescriptors
-        ) { [weak self] _, samples, error in
-            guard let self = self else {
-                return
-            }
-            guard error == nil, let workouts = samples as? [HKWorkout], workouts.isEmpty == false
-            else {
-                return
-            }
-
-            let data = workouts.map { workout -> HealthKitWorkoutData in
-                var record = HealthKitWorkoutData(
-                    timestamp: Int64(workout.endDate.timeIntervalSince1970 * 1000),
-                    label: self.CONFIG.label)
-                record.workoutActivityType = Int(workout.workoutActivityType.rawValue)
-                record.duration = workout.duration
-                record.totalEnergyBurned = workout.totalEnergyBurned?.description ?? ""
-                record.totalDistance = workout.totalDistance?.description ?? ""
-                record.device = self.jsonString(from: workout.device?.toDictionary())
-                record.startDate = Int64(workout.startDate.timeIntervalSince1970 * 1000)
-                record.endDate = Int64(workout.endDate.timeIntervalSince1970 * 1000)
-                record.metadata = self.jsonString(from: workout.metadata)
-                return record
-            }
-
-            self.saveModels(data)
-            self.CONFIG.sensorObserver?.onWorkoutDataChanged(data: data)
-
-            if let last = workouts.last {
-                self.lastWorkoutSyncDate = last.endDate
-            }
-
-            if workouts.count == self.CONFIG.fetchLimit {
-                self.fetchWorkoutData(self.lastWorkoutSyncDate)
-            }
-        }
-
-        self.healthStore?.execute(query)
+        importSamples(type: HKObjectType.workoutType(), from: start,
+            transform: { (sensor, samples: [HKWorkout], completion) in
+                completion(samples.map { workout in
+                    var record = HealthKitWorkoutData(
+                        timestamp: Int64(workout.endDate.timeIntervalSince1970 * 1000),
+                        label: sensor.CONFIG.label)
+                    record.workoutActivityType = Int(workout.workoutActivityType.rawValue)
+                    record.duration = workout.duration
+                    record.totalEnergyBurned = workout.totalEnergyBurned?.description ?? ""
+                    record.totalDistance = workout.totalDistance?.description ?? ""
+                    record.device = sensor.jsonString(from: workout.device?.toDictionary())
+                    record.startDate = Int64(workout.startDate.timeIntervalSince1970 * 1000)
+                    record.endDate = Int64(workout.endDate.timeIntervalSince1970 * 1000)
+                    record.metadata = sensor.jsonString(from: workout.metadata)
+                    return record
+                })
+            },
+            updateDate: { sensor, latestEnd in
+                if latestEnd > sensor.lastWorkoutSyncDate {
+                    sensor.lastWorkoutSyncDate = latestEnd
+                }
+            },
+            notify: { $0.onWorkoutDataChanged(data: $1) })
     }
 
     public func fetchAudiogramData(_ start: Date) {
-        guard self.shouldCollectAudiogram() else {
-            return
-        }
+        guard shouldCollectAudiogram() else { return }
 
-        if #available(iOS 13.0, *) {
-            let sampleType = HKObjectType.audiogramSampleType()
-            let predicate = HKQuery.predicateForSamples(
-                withStart: start, end: nil, options: .strictEndDate)
-            let sortDescriptors = [
-                NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
-            ]
-            let query = HKSampleQuery(
-                sampleType: sampleType, predicate: predicate, limit: self.CONFIG.fetchLimit,
-                sortDescriptors: sortDescriptors
-            ) { [weak self] _, samples, error in
-                guard let self = self else {
-                    return
-                }
-                guard error == nil, let audiograms = samples as? [HKAudiogramSample],
-                    audiograms.isEmpty == false
-                else {
-                    return
-                }
-
-                let hertz = HKUnit.hertz()
-                let dbhl = HKUnit.decibelHearingLevel()
-                let data = audiograms.map { sample -> HealthKitAudiogramData in
+        let hertz = HKUnit.hertz()
+        let dbhl = HKUnit.decibelHearingLevel()
+        importSamples(type: HKObjectType.audiogramSampleType(), from: start,
+            transform: { (sensor, samples: [HKAudiogramSample], completion) in
+                completion(samples.map { sample in
                     var record = HealthKitAudiogramData(
                         timestamp: Int64(sample.endDate.timeIntervalSince1970 * 1000),
-                        label: self.CONFIG.label)
+                        label: sensor.CONFIG.label)
                     let points = sample.sensitivityPoints.map { point -> [String: Double?] in
                         [
                             "frequency": point.frequency.doubleValue(for: hertz),
                             "leftEarSensitivity": point.leftEarSensitivity?.doubleValue(for: dbhl),
-                            "rightEarSensitivity": point.rightEarSensitivity?.doubleValue(
-                                for: dbhl),
+                            "rightEarSensitivity": point.rightEarSensitivity?.doubleValue(for: dbhl),
                         ]
                     }
-                    record.sensitivityPoints = self.jsonString(fromOptionalDoubleArray: points)
-                    record.device = self.jsonString(from: sample.device?.toDictionary())
+                    record.sensitivityPoints = sensor.jsonString(fromOptionalDoubleArray: points)
+                    record.device = sensor.jsonString(from: sample.device?.toDictionary())
                     record.startDate = Int64(sample.startDate.timeIntervalSince1970 * 1000)
                     record.endDate = Int64(sample.endDate.timeIntervalSince1970 * 1000)
-                    record.metadata = self.jsonString(from: sample.metadata)
+                    record.metadata = sensor.jsonString(from: sample.metadata)
                     return record
+                })
+            },
+            updateDate: { sensor, latestEnd in
+                if latestEnd > sensor.lastAudiogramSyncDate {
+                    sensor.lastAudiogramSyncDate = latestEnd
                 }
-
-                self.saveModels(data)
-                self.CONFIG.sensorObserver?.onAudiogramDataChanged(data: data)
-
-                if let last = audiograms.last {
-                    self.lastAudiogramSyncDate = last.endDate
-                }
-
-                if audiograms.count == self.CONFIG.fetchLimit {
-                    self.fetchAudiogramData(self.lastAudiogramSyncDate)
-                }
-            }
-
-            self.healthStore?.execute(query)
-        }
+            },
+            notify: { $0.onAudiogramDataChanged(data: $1) })
     }
 
     public func fetchActivitySummaryData(_ start: Date) {
@@ -1032,8 +840,38 @@ extension HealthKitSensor {
     }
 
     @available(iOS 14.0, *)
+    private func loadElectrocardiogramSamples(
+        _ samples: [HKElectrocardiogram],
+        completion: @escaping ([HealthKitElectrocardiogramData]?) -> Void
+    ) {
+        guard let store = healthStore else {
+            completion(nil)
+            return
+        }
+
+        func loadNext(_ index: Int, _ records: [HealthKitElectrocardiogramData]) {
+            guard index < samples.count else {
+                completion(records)
+                return
+            }
+            loadElectrocardiogramSample(samples[index], store: store) { record in
+                guard let record else {
+                    completion(nil)
+                    return
+                }
+                var updated = records
+                updated.append(record)
+                loadNext(index + 1, updated)
+            }
+        }
+
+        loadNext(0, [])
+    }
+
+    @available(iOS 14.0, *)
     private func loadElectrocardiogramSample(
         _ electrocardiogram: HKElectrocardiogram,
+        store: HKHealthStore,
         completion: @escaping (HealthKitElectrocardiogramData?) -> Void
     ) {
         var result = HealthKitElectrocardiogramData(
@@ -1052,7 +890,8 @@ extension HealthKitSensor {
         result.device = self.jsonString(from: electrocardiogram.device?.toDictionary())
         result.metadata = self.jsonString(from: electrocardiogram.metadata)
 
-        var measurements = [[String: Double]]()
+        let record = result
+        let measurements = ElectrocardiogramMeasurements()
         let query = HKElectrocardiogramQuery(electrocardiogram) { _, state in
             switch state {
             case .measurement(let measurement):
@@ -1063,16 +902,17 @@ extension HealthKitSensor {
                     ])
                 }
             case .done:
-                result.measurements = self.jsonString(from: measurements)
-                completion(result)
+                var completeRecord = record
+                completeRecord.measurements = self.jsonString(from: measurements.values())
+                completion(completeRecord)
             case .error:
-                completion(result)
+                completion(nil)
             @unknown default:
-                completion(result)
+                completion(nil)
             }
         }
 
-        self.healthStore?.execute(query)
+        store.execute(query)
     }
 
     public var lastHRAnchor: Int {
@@ -1205,12 +1045,32 @@ extension HealthKitSensor {
     }
 
     public func resetSyncDates() {
+        invalidateCallbacks()
+        let database = CONFIG.dbType == .none ? nil : (dbEngine as? SQLiteEngine)?.getSQLiteInstance()
+        historyImport.reset(database: database)
         let defaults = UserDefaults.standard
         let keyPrefix = "com.aware.ios.sensor.healthkit.key."
         defaults.dictionaryRepresentation().keys
             .filter { $0.hasPrefix(keyPrefix) }
             .forEach { defaults.removeObject(forKey: $0) }
         defaults.synchronize()
+    }
+}
+
+private final class ElectrocardiogramMeasurements: @unchecked Sendable {
+    private let lock = NSLock()
+    private var rows: [[String: Double]] = []
+
+    func append(_ row: [String: Double]) {
+        lock.lock()
+        defer { lock.unlock() }
+        rows.append(row)
+    }
+
+    func values() -> [[String: Double]] {
+        lock.lock()
+        defer { lock.unlock() }
+        return rows
     }
 }
 
@@ -1618,14 +1478,14 @@ extension HealthKitSensor {
         }
 
         let dataTypes = self.resolvedReadTypes()
+        let generation = currentCallbackGeneration()
 
-        if let healthKit = self.healthStore {
-            healthKit.requestAuthorization(toShare: nil, read: dataTypes) {
-                (success, error) -> Void in
-                if let observer = self.CONFIG.sensorObserver {
-                    observer.onHealthKitAuthorizationStatusChanged(success: success, error: error)
-                }
-                if success {
+        healthStore?.requestAuthorization(toShare: nil, read: dataTypes) { [weak self] success, error in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.currentCallbackGeneration() == generation else { return }
+                self.CONFIG.sensorObserver?.onHealthKitAuthorizationStatusChanged(
+                    success: success, error: error)
+                if success, self.currentCallbackGeneration() == generation {
                     self.fetchAllEnabledData()
                 }
             }

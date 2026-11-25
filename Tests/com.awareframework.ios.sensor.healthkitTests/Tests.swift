@@ -111,6 +111,34 @@ class Tests: XCTestCase {
         XCTAssertFalse(identifiers.contains(HKObjectType.workoutType().identifier))
     }
 
+    /// Heart rate also imports HRV and resting/walking heart rate (fetchActivityData), so their read
+    /// authorization must be requested with it; otherwise the import fails with "Authorization not determined".
+    func testResolvedReadTypeIdentifiersIncludeAdvancedHeartRateWithHeartRate() {
+        let advanced: [HKQuantityTypeIdentifier] = [
+            .heartRateVariabilitySDNN, .restingHeartRate, .walkingHeartRateAverage,
+        ]
+        let withHeartRate = HealthKitSensor.init(
+            HealthKitSensor.Config().apply { config in
+                config.statusHeartRate = true
+                config.statusAllQuantityTypes = false
+            })
+        let ids = withHeartRate.resolvedReadTypeIdentifiers()
+        XCTAssertTrue(ids.contains(HKQuantityTypeIdentifier.heartRate.rawValue))
+        for identifier in advanced {
+            XCTAssertTrue(ids.contains(identifier.rawValue), identifier.rawValue)
+        }
+
+        let withoutHeartRate = HealthKitSensor.init(
+            HealthKitSensor.Config().apply { config in
+                config.statusHeartRate = false
+                config.statusAllQuantityTypes = false
+            })
+        let idsWithout = withoutHeartRate.resolvedReadTypeIdentifiers()
+        for identifier in advanced {
+            XCTAssertFalse(idsWithout.contains(identifier.rawValue), identifier.rawValue)
+        }
+    }
+
     func testResolvedReadTypeIdentifiersForSpecialSensors() {
         let sensor = HealthKitSensor.init(
             HealthKitSensor.Config().apply { config in
